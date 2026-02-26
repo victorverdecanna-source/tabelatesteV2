@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solidsteel | Dashboard de Preços 2026</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/papaparse/5.3.0/papaparse.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+
+    <header class="bg-[#004a44] text-white p-6 shadow-xl sticky top-0 z-50">
+        <div class="container mx-auto flex justify-between items-center">
+            <div>
+                <h1 class="text-xl font-bold uppercase tracking-tighter">Solidsteel</h1>
+                <p class="text-xs opacity-70">Tabela de Preços Atacado 2026</p>
+            </div>
+            <div id="status" class="text-[10px] font-bold px-3 py-1 rounded-full border border-emerald-500 bg-emerald-500/10">
+                SINCRONIZANDO...
+            </div>
+        </div>
+    </header>
+
+    <main class="container mx-auto p-4 md:p-8">
+        <div class="mb-6 relative">
+            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" id="searchInput" placeholder="Busque por Autoclave, Banho, Modelo..." 
+                class="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl shadow-sm focus:ring-2 focus:ring-[#004a44] outline-none text-lg">
+        </div>
+
+        <div id="loader" class="py-20 text-center text-slate-500">
+            <div class="animate-spin inline-block w-8 h-8 border-4 border-[#004a44] border-t-transparent rounded-full mb-4"></div>
+            <p>Acessando base de dados da Solidsteel...</p>
+        </div>
+
+        <div id="tableContent" class="hidden bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="p-4 font-bold text-slate-600 text-xs uppercase">Modelo / Linha</th>
+                            <th class="p-4 font-bold text-slate-600 text-xs uppercase">Especificações Técnicas</th>
+                            <th class="p-4 font-bold text-slate-600 text-xs uppercase text-right">À Vista</th>
+                            <th class="p-4 font-bold text-slate-600 text-xs uppercase text-right">Faturado</th>
+                            <th class="p-4 font-bold text-slate-600 text-xs uppercase text-center">Zap</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-100"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQbfeK3jfA6nWF0e7t9lKWsVnmTes5SM0Jsg3_bSls4Zd6rtAtw6Ba5kE4FOPXwzxB0NM-sl4DQmsid/pub?gid=0&single=true&output=csv';
+        let rawData = [];
+
+        function init() {
+            Papa.parse(CSV_URL, {
+                download: true,
+                header: false, // Lemos como array puro para lidar com colunas sem nome
+                skipEmptyLines: true,
+                complete: function(results) {
+                    console.log("Dados Brutos:", results.data);
+                    processarDados(results.data);
+                },
+                error: function(err) {
+                    document.getElementById('loader').innerHTML = `<p class="text-red-500">Erro: Verifique se o link do Sheets está 'Publicado na Web' como CSV.</p>`;
+                }
+            });
+        }
+
+        function processarDados(rows) {
+            // Remove a primeira linha (cabeçalho) e mapeia os dados
+            const headers = rows[0];
+            const content = rows.slice(1);
+
+            rawData = content.map(row => {
+                return {
+                    categoria: row[0] || '',
+                    modelo: row[1] || '',
+                    // Une as colunas C, D, E, F em uma única string de specs
+                    specs: [row[2], row[3], row[4], row[5]].filter(Boolean).join(' | '),
+                    vista: row[6] || '0,00',
+                    faturado: row[7] || '0,00'
+                };
+            });
+
+            document.getElementById('loader').classList.add('hidden');
+            document.getElementById('tableContent').classList.remove('hidden');
+            document.getElementById('status').textContent = "ONLINE";
+            renderTable(rawData);
+        }
+
+        function renderTable(data) {
+            const body = document.getElementById('tableBody');
+            body.innerHTML = data.map(item => `
+                <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="p-4">
+                        <span class="block font-bold text-[#004a44]">${item.modelo}</span>
+                        <span class="text-[10px] text-slate-400 uppercase">${item.categoria}</span>
+                    </td>
+                    <td class="p-4 text-sm text-slate-600 font-medium italic">${item.specs}</td>
+                    <td class="p-4 text-right font-mono font-bold text-emerald-600 text-lg">R$ ${item.vista}</td>
+                    <td class="p-4 text-right font-mono text-slate-500 text-sm">R$ ${item.faturado}</td>
+                    <td class="p-4 text-center">
+                        <button onclick="enviarZap('${item.modelo}', '${item.vista}')" class="text-emerald-500 hover:scale-125 transition-transform text-xl">
+                            <i class="fab fa-whatsapp"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function enviarZap(mod, pre) {
+            const msg = encodeURIComponent(`Olá! Segue cotação Solidsteel:\n\n*Item:* ${mod}\n*Preço à Vista:* R$ ${pre}\n\n_Válido conforme tabela vigente._`);
+            window.open(`https://wa.me/?text=${msg}`, '_blank');
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const busca = e.target.value.toLowerCase();
+            const filtrados = rawData.filter(i => 
+                (i.modelo + i.categoria + i.specs).toLowerCase().includes(busca)
+            );
+            renderTable(filtrados);
+        });
+
+        init();
+    </script>
+</body>
+</html>
